@@ -492,16 +492,47 @@ func (e *GitHubCopilotExecutor) applyHeaders(r *http.Request, apiToken string, b
 	initiator := "user"
 	if len(body) > 0 {
 		if messages := gjson.GetBytes(body, "messages"); messages.Exists() && messages.IsArray() {
+			roleCounts := make(map[string]int)
 			for _, msg := range messages.Array() {
 				role := msg.Get("role").String()
+				roleCounts[role]++
 				if role == "assistant" || role == "tool" {
 					initiator = "agent"
-					break
 				}
+			}
+			if log.IsLevelEnabled(log.DebugLevel) {
+				logGitHubCopilotRequestDebug(r.URL.Path, gjson.GetBytes(body, "model").String(), len(messages.Array()), roleCounts, initiator)
 			}
 		}
 	}
 	r.Header.Set("X-Initiator", initiator)
+}
+
+// logGitHubCopilotRequestDebug logs a concise summary of the outgoing request when debug is enabled.
+func logGitHubCopilotRequestDebug(path, model string, totalMessages int, roleCounts map[string]int, initiator string) {
+	// Build role summary string: e.g. "system=1 user=3 assistant=2 tool=1"
+	roleOrder := []string{"system", "developer", "user", "assistant", "tool"}
+	var roleParts []string
+	for _, role := range roleOrder {
+		if count, ok := roleCounts[role]; ok {
+			roleParts = append(roleParts, fmt.Sprintf("%s=%d", role, count))
+		}
+	}
+	// Append any unexpected roles not in the predefined order
+	for role, count := range roleCounts {
+		known := false
+		for _, r := range roleOrder {
+			if r == role {
+				known = true
+				break
+			}
+		}
+		if !known {
+			roleParts = append(roleParts, fmt.Sprintf("%s=%d", role, count))
+		}
+	}
+	log.Debugf("github-copilot executor: outgoing request | endpoint=%s model=%s messages=%d roles=[%s] initiator=%s",
+		path, model, totalMessages, strings.Join(roleParts, " "), initiator)
 }
 
 // detectVisionContent checks if the request body contains vision/image content.
