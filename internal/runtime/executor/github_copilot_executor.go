@@ -490,9 +490,13 @@ func (e *GitHubCopilotExecutor) applyHeaders(r *http.Request, apiToken string, b
 	r.Header.Set("X-Request-Id", uuid.NewString())
 
 	initiator := "user"
+	var roleCounts map[string]int
+	var totalMessages int
+	model := gjson.GetBytes(body, "model").String()
 	if len(body) > 0 {
 		if messages := gjson.GetBytes(body, "messages"); messages.Exists() && messages.IsArray() {
-			roleCounts := make(map[string]int)
+			roleCounts = make(map[string]int)
+			totalMessages = len(messages.Array())
 			for _, msg := range messages.Array() {
 				role := msg.Get("role").String()
 				roleCounts[role]++
@@ -500,19 +504,20 @@ func (e *GitHubCopilotExecutor) applyHeaders(r *http.Request, apiToken string, b
 					initiator = "agent"
 				}
 			}
-			if log.IsLevelEnabled(log.DebugLevel) {
-				logGitHubCopilotRequestDebug(r.URL.Path, gjson.GetBytes(body, "model").String(), len(messages.Array()), roleCounts, initiator)
-			}
 		}
 	}
-	if e.cfg.ForceGitHubCopilotAgentInitiator {
+	forced := e.cfg.ForceGitHubCopilotAgentInitiator && initiator != "agent"
+	if forced {
 		initiator = "agent"
 	}
 	r.Header.Set("X-Initiator", initiator)
+	if log.IsLevelEnabled(log.DebugLevel) && totalMessages > 0 {
+		logGitHubCopilotRequestDebug(r.URL.Path, model, totalMessages, roleCounts, initiator, forced)
+	}
 }
 
 // logGitHubCopilotRequestDebug logs a concise summary of the outgoing request when debug is enabled.
-func logGitHubCopilotRequestDebug(path, model string, totalMessages int, roleCounts map[string]int, initiator string) {
+func logGitHubCopilotRequestDebug(path, model string, totalMessages int, roleCounts map[string]int, initiator string, forced bool) {
 	// Build role summary string: e.g. "system=1 user=3 assistant=2 tool=1"
 	roleOrder := []string{"system", "developer", "user", "assistant", "tool"}
 	var roleParts []string
@@ -534,8 +539,12 @@ func logGitHubCopilotRequestDebug(path, model string, totalMessages int, roleCou
 			roleParts = append(roleParts, fmt.Sprintf("%s=%d", role, count))
 		}
 	}
+	initiatorLabel := initiator
+	if forced {
+		initiatorLabel = initiator + " (forced)"
+	}
 	log.Debugf("github-copilot executor: outgoing request | endpoint=%s model=%s messages=%d roles=[%s] initiator=%s",
-		path, model, totalMessages, strings.Join(roleParts, " "), initiator)
+		path, model, totalMessages, strings.Join(roleParts, " "), initiatorLabel)
 }
 
 // detectVisionContent checks if the request body contains vision/image content.
