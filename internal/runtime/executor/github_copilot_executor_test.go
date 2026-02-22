@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/router-for-me/CLIProxyAPI/v6/internal/thinking"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v6/sdk/translator"
 	"github.com/tidwall/gjson"
 )
@@ -74,6 +75,24 @@ func TestUseGitHubCopilotResponsesEndpoint_DefaultChat(t *testing.T) {
 	t.Parallel()
 	if useGitHubCopilotResponsesEndpoint(sdktranslator.FromString("openai"), "claude-3-5-sonnet") {
 		t.Fatal("expected default openai source with non-codex model to use /chat/completions")
+	}
+}
+
+func TestGitHubCopilotClaudeThinkingRetained(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{"model":"claude-opus-4.6","messages":[],"reasoning_effort":"high"}`)
+	body, err := thinking.ApplyThinking(body, "claude-opus-4.6", "claude", "openai", "github-copilot")
+	if err != nil {
+		t.Fatalf("ApplyThinking() error = %v", err)
+	}
+
+	effort := gjson.GetBytes(body, "reasoning_effort")
+	if !effort.Exists() {
+		t.Fatal("reasoning_effort should be preserved for github-copilot Claude thinking models")
+	}
+	if effort.String() != "high" {
+		t.Fatalf("reasoning_effort = %q, want %q", effort.String(), "high")
 	}
 }
 
@@ -227,6 +246,15 @@ func TestTranslateGitHubCopilotResponsesNonStreamToClaude_ToolUseMapping(t *test
 	}
 }
 
+func TestTranslateGitHubCopilotResponsesNonStreamToClaude_ReasoningUsageMapping(t *testing.T) {
+	t.Parallel()
+	resp := []byte(`{"id":"resp_3","model":"gpt-5-codex","output":[{"type":"message","content":[{"type":"output_text","text":"hello"}]}],"usage":{"input_tokens":10,"output_tokens":20,"output_tokens_details":{"reasoning_tokens":7}}}`)
+	out := translateGitHubCopilotResponsesNonStreamToClaude(resp)
+	if got := gjson.Get(out, "usage.output_tokens_details.reasoning_tokens").Int(); got != 7 {
+		t.Fatalf("usage.output_tokens_details.reasoning_tokens = %d, want 7", got)
+	}
+}
+
 func TestTranslateGitHubCopilotResponsesStreamToClaude_TextLifecycle(t *testing.T) {
 	t.Parallel()
 	var param any
@@ -246,6 +274,18 @@ func TestTranslateGitHubCopilotResponsesStreamToClaude_TextLifecycle(t *testing.
 	joinedCompleted := strings.Join(completed, "")
 	if !strings.Contains(joinedCompleted, "message_delta") || !strings.Contains(joinedCompleted, "message_stop") {
 		t.Fatalf("completed events = %#v, want message_delta + message_stop", completed)
+	}
+}
+
+func TestTranslateGitHubCopilotResponsesStreamToClaude_ReasoningUsageMapping(t *testing.T) {
+	t.Parallel()
+	var param any
+
+	_ = translateGitHubCopilotResponsesStreamToClaude([]byte(`data: {"type":"response.created","response":{"id":"resp_9","model":"gpt-5-codex"}}`), &param)
+	completed := translateGitHubCopilotResponsesStreamToClaude([]byte(`data: {"type":"response.completed","response":{"usage":{"input_tokens":7,"output_tokens":9,"output_tokens_details":{"reasoning_tokens":5}}}}`), &param)
+	joined := strings.Join(completed, "")
+	if !strings.Contains(joined, `"reasoning_tokens":5`) {
+		t.Fatalf("completed events missing reasoning tokens: %#v", completed)
 	}
 }
 

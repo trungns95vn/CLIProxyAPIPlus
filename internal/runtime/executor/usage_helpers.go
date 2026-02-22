@@ -248,6 +248,8 @@ func parseOpenAIStreamUsage(line []byte) (usage.Detail, bool) {
 	}
 	if reasoning := usageNode.Get("completion_tokens_details.reasoning_tokens"); reasoning.Exists() {
 		detail.ReasoningTokens = reasoning.Int()
+	} else if reasoning = usageNode.Get("output_tokens_details.reasoning_tokens"); reasoning.Exists() {
+		detail.ReasoningTokens = reasoning.Int()
 	}
 	return detail, true
 }

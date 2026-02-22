@@ -1042,6 +1042,7 @@ func translateGitHubCopilotResponsesNonStreamToClaude(data []byte) string {
 	inputTokens := root.Get("usage.input_tokens").Int()
 	outputTokens := root.Get("usage.output_tokens").Int()
 	cachedTokens := root.Get("usage.input_tokens_details.cached_tokens").Int()
+	reasoningTokens := root.Get("usage.output_tokens_details.reasoning_tokens").Int()
 	if cachedTokens > 0 && inputTokens >= cachedTokens {
 		inputTokens -= cachedTokens
 	}
@@ -1049,6 +1050,9 @@ func translateGitHubCopilotResponsesNonStreamToClaude(data []byte) string {
 	out, _ = sjson.Set(out, "usage.output_tokens", outputTokens)
 	if cachedTokens > 0 {
 		out, _ = sjson.Set(out, "usage.cache_read_input_tokens", cachedTokens)
+	}
+	if reasoningTokens > 0 {
+		out, _ = sjson.Set(out, "usage.output_tokens_details.reasoning_tokens", reasoningTokens)
 	}
 	if hasToolUse {
 		out, _ = sjson.Set(out, "stop_reason", "tool_use")
@@ -1256,6 +1260,7 @@ func translateGitHubCopilotResponsesStreamToClaude(line []byte, param *any) []st
 			inputTokens := gjson.GetBytes(payload, "response.usage.input_tokens").Int()
 			outputTokens := gjson.GetBytes(payload, "response.usage.output_tokens").Int()
 			cachedTokens := gjson.GetBytes(payload, "response.usage.input_tokens_details.cached_tokens").Int()
+			reasoningTokens := gjson.GetBytes(payload, "response.usage.output_tokens_details.reasoning_tokens").Int()
 			if cachedTokens > 0 && inputTokens >= cachedTokens {
 				inputTokens -= cachedTokens
 			}
@@ -1265,6 +1270,9 @@ func translateGitHubCopilotResponsesStreamToClaude(line []byte, param *any) []st
 			messageDelta, _ = sjson.Set(messageDelta, "usage.output_tokens", outputTokens)
 			if cachedTokens > 0 {
 				messageDelta, _ = sjson.Set(messageDelta, "usage.cache_read_input_tokens", cachedTokens)
+			}
+			if reasoningTokens > 0 {
+				messageDelta, _ = sjson.Set(messageDelta, "usage.output_tokens_details.reasoning_tokens", reasoningTokens)
 			}
 			results = append(results, "event: message_delta\ndata: "+messageDelta+"\n\n")
 			results = append(results, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
