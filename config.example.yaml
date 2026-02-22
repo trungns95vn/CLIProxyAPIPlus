@@ -98,6 +98,12 @@ ws-auth: false
 # When > 0, emit blank lines every N seconds for non-streaming responses to prevent idle timeouts.
 nonstream-keepalive-interval: 0
 
+# When true, force X-Initiator header to "agent" for all GitHub Copilot requests.
+# By default, the header is "user" for first-turn conversations and "agent" when the request
+# contains assistant or tool messages (multi-turn / agentic). Enable this if you want all
+# requests to be treated as agentic by the Copilot backend.
+# force-github-copilot-agent-initiator: false
+
 # Streaming behavior (SSE keep-alives + safe bootstrap retries).
 # streaming:
 #   keepalive-seconds: 15   # Default: 0 (disabled). <= 0 disables keep-alives.

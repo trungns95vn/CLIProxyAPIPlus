@@ -505,6 +505,9 @@ func (e *GitHubCopilotExecutor) applyHeaders(r *http.Request, apiToken string, b
 			}
 		}
 	}
+	if e.cfg.ForceGitHubCopilotAgentInitiator {
+		initiator = "agent"
+	}
 	r.Header.Set("X-Initiator", initiator)
 }
 
