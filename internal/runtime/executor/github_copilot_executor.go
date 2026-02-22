@@ -35,12 +35,14 @@ const (
 	maxScannerBufferSize = 20_971_520
 
 	// Copilot API header values.
-	copilotUserAgent     = "GitHubCopilotChat/0.35.0"
-	copilotEditorVersion = "vscode/1.107.0"
-	copilotPluginVersion = "copilot-chat/0.35.0"
-	copilotIntegrationID = "vscode-chat"
-	copilotOpenAIIntent  = "conversation-panel"
-	copilotGitHubAPIVer  = "2025-04-01"
+	copilotAcceptJSON        = "application/json"
+	copilotAcceptEventStream = "text/event-stream"
+	copilotUserAgent         = "GitHubCopilotChat/0.35.0"
+	copilotEditorVersion     = "vscode/1.107.0"
+	copilotPluginVersion     = "copilot-chat/0.35.0"
+	copilotIntegrationID     = "vscode-chat"
+	copilotOpenAIIntent      = "conversation-panel"
+	copilotGitHubAPIVer      = "2025-04-01"
 )
 
 // GitHubCopilotExecutor handles requests to the GitHub Copilot API.
@@ -73,6 +75,7 @@ func (e *GitHubCopilotExecutor) PrepareRequest(req *http.Request, auth *cliproxy
 	if req == nil {
 		return nil
 	}
+	body := requestBodySnapshot(req)
 	ctx := req.Context()
 	if ctx == nil {
 		ctx = context.Background()
@@ -81,7 +84,7 @@ func (e *GitHubCopilotExecutor) PrepareRequest(req *http.Request, auth *cliproxy
 	if errToken != nil {
 		return errToken
 	}
-	e.applyHeaders(req, apiToken, nil)
+	e.applyHeaders(req, apiToken, body)
 	return nil
 }
 
@@ -480,7 +483,15 @@ func (e *GitHubCopilotExecutor) ensureAPIToken(ctx context.Context, auth *clipro
 func (e *GitHubCopilotExecutor) applyHeaders(r *http.Request, apiToken string, body []byte) {
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("Authorization", "Bearer "+apiToken)
-	r.Header.Set("Accept", "application/json")
+	acceptHeader := copilotAcceptJSON
+	streamRequested := gjson.GetBytes(body, "stream").Type == gjson.True
+	if !streamRequested {
+		streamRequested = strings.Contains(strings.ToLower(r.Header.Get("Accept")), copilotAcceptEventStream)
+	}
+	if streamRequested {
+		acceptHeader = copilotAcceptEventStream
+	}
+	r.Header.Set("Accept", acceptHeader)
 	r.Header.Set("User-Agent", copilotUserAgent)
 	r.Header.Set("Editor-Version", copilotEditorVersion)
 	r.Header.Set("Editor-Plugin-Version", copilotPluginVersion)
@@ -506,7 +517,7 @@ func (e *GitHubCopilotExecutor) applyHeaders(r *http.Request, apiToken string, b
 			}
 		}
 	}
-	forced := e.cfg.ForceGitHubCopilotAgentInitiator && initiator != "agent"
+	forced := e.cfg != nil && e.cfg.ForceGitHubCopilotAgentInitiator && initiator != "agent"
 	if forced {
 		initiator = "agent"
 	}
@@ -545,6 +556,26 @@ func logGitHubCopilotRequestDebug(path, model string, totalMessages int, roleCou
 	}
 	log.Debugf("github-copilot executor: outgoing request | endpoint=%s model=%s messages=%d roles=[%s] initiator=%s",
 		path, model, totalMessages, strings.Join(roleParts, " "), initiatorLabel)
+}
+
+func requestBodySnapshot(req *http.Request) []byte {
+	if req == nil || req.GetBody == nil {
+		return nil
+	}
+	bodyReader, err := req.GetBody()
+	if err != nil || bodyReader == nil {
+		return nil
+	}
+	defer func() {
+		if errClose := bodyReader.Close(); errClose != nil {
+			log.Debugf("github-copilot executor: close request body snapshot reader error: %v", errClose)
+		}
+	}()
+	body, err := io.ReadAll(bodyReader)
+	if err != nil {
+		return nil
+	}
+	return body
 }
 
 // detectVisionContent checks if the request body contains vision/image content.

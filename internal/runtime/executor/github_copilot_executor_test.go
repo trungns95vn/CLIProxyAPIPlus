@@ -337,6 +337,39 @@ func TestApplyHeaders_GitHubAPIVersion(t *testing.T) {
 	}
 }
 
+func TestApplyHeaders_AcceptJSONForNonStreaming(t *testing.T) {
+	t.Parallel()
+	e := &GitHubCopilotExecutor{}
+	req, _ := http.NewRequest(http.MethodPost, "https://example.com", nil)
+	body := []byte(`{"messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	e.applyHeaders(req, "token", body)
+	if got := req.Header.Get("Accept"); got != "application/json" {
+		t.Fatalf("Accept = %q, want application/json", got)
+	}
+}
+
+func TestApplyHeaders_AcceptEventStreamForStreaming(t *testing.T) {
+	t.Parallel()
+	e := &GitHubCopilotExecutor{}
+	req, _ := http.NewRequest(http.MethodPost, "https://example.com", nil)
+	body := []byte(`{"messages":[{"role":"user","content":"hello"}],"stream":true}`)
+	e.applyHeaders(req, "token", body)
+	if got := req.Header.Get("Accept"); got != "text/event-stream" {
+		t.Fatalf("Accept = %q, want text/event-stream", got)
+	}
+}
+
+func TestApplyHeaders_AcceptEventStreamWhenClientAlreadyRequestsStream(t *testing.T) {
+	t.Parallel()
+	e := &GitHubCopilotExecutor{}
+	req, _ := http.NewRequest(http.MethodPost, "https://example.com", nil)
+	req.Header.Set("Accept", "text/event-stream")
+	e.applyHeaders(req, "token", nil)
+	if got := req.Header.Get("Accept"); got != "text/event-stream" {
+		t.Fatalf("Accept = %q, want text/event-stream", got)
+	}
+}
+
 // --- Tests for vision detection (Problem P) ---
 
 func TestDetectVisionContent_WithImageURL(t *testing.T) {
